@@ -1,12 +1,493 @@
-<!DOCTYPE html>
-<html>
+<!doctype html>
+<html lang="en">
 <head>
-  <title>Crypto Rush</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Crypto Rush — Tap & Flip</title>
+  <style>
+    :root{
+      --bg1:#f3f4f6; --bg2:#e5e7eb;
+      --card:#ffffffcc; --muted:#6b7280;
+    }
+    html,body{height:100%;margin:0;font-family:Inter,system-ui,Arial,sans-serif;background:linear-gradient(135deg,var(--bg1),var(--bg2));color:#111827}
+    .wrap{min-height:100%;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:20px 12px 80px}
+    h1{font-size:28px;margin:6px 0 18px}
+    .panel{width:100%;max-width:420px;background:var(--card);backdrop-filter:blur(6px);border-radius:18px;box-shadow:0 8px 30px rgba(0,0,0,.08);padding:14px;border:1px solid rgba(0,0,0,.06)}
+    .game-area{position:relative;height:420px;background:linear-gradient(180deg,#ffffff, #fafafa);border-radius:12px;overflow:hidden;border:1px solid rgba(0,0,0,.04)}
+    .center-hint{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--muted);font-weight:600;pointer-events:none}
+    .coin{position:absolute;width:64px;height:64px;border-radius:999px;display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;box-shadow:0 8px 18px rgba(2,6,23,.12);border:2px solid rgba(255,255,255,.4);transform-origin:center center;cursor:pointer;user-select:none;touch-action:manipulation}
+    .coin.small{width:48px;height:48px;font-size:12px}
+    .coin.btc{background:#f97316}
+    .coin.eth{background:#3b82f6}
+    .coin.doge{background:#10b981}
+    .coin.gold{background:#facc15;color:#000}
+    .coin.ghost{background:#ef4444}
+    .coin.double{background:linear-gradient(90deg,#ffd86b,#ff9c5b); color:#000}
+    .pulse {animation:pulse 1s infinite}
+    .glow-yellow{box-shadow:0 0 18px rgba(250,204,21,.7)}
+    .pulse-purple{box-shadow:0 0 20px rgba(106,13,173,.55)}
+    @keyframes pulse{0%{transform:scale(1)}50%{transform:scale(1.08)}100%{transform:scale(1)}}
+    .hud{display:flex;justify-content:space-between;align-items:center;margin-top:12px}
+    .btn{background:#7c3aed;color:#fff;padding:10px 16px;border-radius:12px;border:none;font-weight:700;box-shadow:0 8px 16px rgba(124,58,237,.12)}
+    .small-muted{color:var(--muted);font-size:14px}
+    .leaderboard{margin-top:12px;padding:10px;border-radius:12px;background:linear-gradient(180deg,#ffffffcc,#ffffffcc);border:1px solid rgba(0,0,0,.04)}
+    .particle{position:absolute;width:8px;height:8px;border-radius:8px;pointer-events:none;opacity:0;transform:translate(-50%,-50%) scale(0.6)}
+    .popup{position:relative;font-weight:800}
+    .powerup-badge{position:fixed;right:14px;top:14px;background:linear-gradient(90deg,#7c3aed,#6d28d9);color:#fff;padding:8px 12px;border-radius:999px;font-weight:700;box-shadow:0 8px 30px rgba(99,102,241,.12)}
+    .event-banner{margin-bottom:8px;padding:8px;border-radius:10px;font-weight:700;text-align:center}
+    .event-double{background:linear-gradient(90deg,#fff7ed,#fff1c2);color:#92400e}
+    .event-fast{background:linear-gradient(90deg,#eff6ff,#dbeafe);color:#1e40af}
+    .event-bonus{background:linear-gradient(90deg,#faf5ff,#f3e8ff);color:#6b21a8}
+    /* small screens */
+    @media (max-width:420px){ .game-area{height:360px} .coin{width:56px;height:56px} }
+  </style>
 </head>
 <body>
-  <h1>Crypto Rush</h1>
-  <p>Welcome to the game!</p>
-<button onclick="startGame()">Start Game</button>
-<script src="game.js"></script>
+  <div class="wrap">
+    <h1>Crypto Rush — Tap & Flip</h1>
+
+    <div class="panel">
+      <div id="dailyBanner" style="display:none" class="event-banner"></div>
+
+      <div class="game-area" id="gameArea">
+        <div id="centerHint" class="center-hint">Press Start to begin</div>
+      </div>
+
+      <div class="hud">
+        <div class="small-muted">⏱️ <span id="timer">30</span>s</div>
+        <div class="small-muted">🏆 <span id="score">0</span></div>
+        <button class="btn" id="startBtn">Start Game</button>
+      </div>
+
+      <div class="leaderboard">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <strong>Live Leaderboard</strong>
+          <button id="clearScores" style="background:transparent;border:none;color:#ef4444;font-weight:700;cursor:pointer">Clear</button>
+        </div>
+        <ol id="leaderList" style="margin:8px 0 0;padding-left:18px;color:var(--muted)"></ol>
+      </div>
+
+      <div style="margin-top:10px" class="small-muted">
+        <div>Achievements: <span id="achList">—</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Audio -->
+  <audio id="sndTap" src="/sounds/tap.mp3"></audio>
+  <audio id="sndBonus" src="/sounds/bonus.mp3"></audio>
+  <audio id="sndGhost" src="/sounds/ghost.mp3"></audio>
+  <audio id="sndPower" src="/sounds/powerup.mp3"></audio>
+  <audio id="sndAch" src="/sounds/achievement.mp3"></audio>
+  <audio id="sndDaily" src="/sounds/daily_challenge.mp3"></audio>
+
+<script>
+/* =========================
+   Crypto Rush — Vanilla JS
+   Single-file game for GitHub Pages
+   ========================= */
+
+(() => {
+  // DOM
+  const gameArea = document.getElementById('gameArea');
+  const startBtn = document.getElementById('startBtn');
+  const timerEl = document.getElementById('timer');
+  const scoreEl = document.getElementById('score');
+  const leaderList = document.getElementById('leaderList');
+  const achList = document.getElementById('achList');
+  const dailyBanner = document.getElementById('dailyBanner');
+
+  // audio
+  const sndTap = document.getElementById('sndTap');
+  const sndBonus = document.getElementById('sndBonus');
+  const sndGhost = document.getElementById('sndGhost');
+  const sndPower = document.getElementById('sndPower');
+  const sndAch = document.getElementById('sndAch');
+  const sndDaily = document.getElementById('sndDaily');
+
+  // state
+  let timer = 30;
+  let score = 0;
+  let playing = false;
+  let coins = [];
+  let particles = [];
+  let spawnRate = 500;
+  let spawnIntervalId = null;
+  let tickIntervalId = null;
+  let multiplier = false;
+  let slowMotion = false;
+  let autoCollect = false;
+  let leaderboard = JSON.parse(localStorage.getItem('cryptoRushLeaderboard') || '[]');
+  let achievements = JSON.parse(localStorage.getItem('cryptoRushAch') || '[]');
+  let daily = JSON.parse(localStorage.getItem('cryptoRushDaily') || 'null');
+  let events = [];
+  const GAME_CENTER = { x: 50, y: 50 }; // percents for auto-collect check
+
+  // coin types & values
+  const COIN_TYPES = [
+    { id:'btc', label:'BTC', points:100, cls:'btc' },
+    { id:'eth', label:'ETH', points:50, cls:'eth' },
+    { id:'doge',label:'DOGE', points:20, cls:'doge' },
+    { id:'gold',label:'GOLD', points:200, cls:'gold' },
+    { id:'ghost',label:'GHOST', points:-50, cls:'ghost' }
+  ];
+
+  // utility
+  const rand = (min,max)=> Math.floor(Math.random()*(max-min+1))+min;
+  const now = ()=>Date.now();
+
+  // init daily (if not exist, set new challenge)
+  if(!daily || daily===null || !daily.target){
+    const target = rand(500,1500);
+    daily = { active:true, target:target, date:new Date().toDateString() };
+    localStorage.setItem('cryptoRushDaily', JSON.stringify(daily));
+  }
+  // if daily existed but different day, reset
+  if(daily.date !== new Date().toDateString()){
+    const target = rand(500,1500);
+    daily = { active:true, target:target, date:new Date().toDateString() };
+    localStorage.setItem('cryptoRushDaily', JSON.stringify(daily));
+  }
+  // display daily
+  if(daily && daily.active){
+    dailyBanner.style.display='block';
+    dailyBanner.textContent = `🌟 Daily Challenge: Score ${daily.target} points!`;
+  } else dailyBanner.style.display='none';
+
+  // render leaderboard & achievements
+  function renderLeaderboard(){
+    leaderList.innerHTML='';
+    if(leaderboard.length===0){ leaderList.innerHTML='<li style="color:var(--muted)">No scores yet</li>'; return; }
+    leaderboard.forEach((e,i)=>{
+      const li = document.createElement('li');
+      li.textContent = `#${i+1} ${e.name} — ${e.score} pts`;
+      leaderList.appendChild(li);
+    });
+  }
+  function renderAchievements(){
+    achList.textContent = achievements.length ? achievements.join(', ') : '—';
+  }
+
+  renderLeaderboard(); renderAchievements();
+
+  // spawn coin DOM
+  function spawnCoin(typeObj){
+    const id = now() + '-' + Math.random().toString(36).slice(2,7);
+    const x = Math.random()*80 + 10; // % left
+    const y = Math.random()*60 + 20; // % top
+    const rot = Math.random()*360;
+    const el = document.createElement('div');
+    el.className = `coin ${typeObj.cls}`;
+    el.style.left = x + '%';
+    el.style.top = y + '%';
+    el.style.transform = `rotate(${rot}deg)`;
+    el.textContent = typeObj.label;
+    // special visuals for event types
+    if(typeObj.id === 'doubleCoin') el.classList.add('double','pulse');
+    if(typeObj.id && typeObj.effect === 'glow-yellow') el.classList.add('glow-yellow');
+    if(typeObj.effect === 'pulse-purple') el.classList.add('pulse');
+    el.dataset.id = id;
+    el.dataset.type = typeObj.id;
+    el.dataset.points = typeObj.points || 0;
+    gameArea.appendChild(el);
+
+    // simple entrance animation
+    el.style.opacity = '0';
+    el.style.transform += ' scale(0.6)';
+    requestAnimationFrame(()=>{ el.style.transition='all .28s ease'; el.style.opacity='1'; el.style.transform = `rotate(${rot}deg) scale(1)`; });
+
+    // click handler
+    el.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      handleTap(el);
+    });
+
+    // store
+    coins.push({ id, el, x, y, rot, type:typeObj.id, points:typeObj.points || 0, created:now(), effect:typeObj.effect||null });
+    // auto remove after 1s
+    setTimeout(()=>{ removeCoinById(id); }, 1000);
+  }
+
+  function removeCoinById(id){
+    const idx = coins.findIndex(c=>c.id===id);
+    if(idx!==-1){
+      const c = coins[idx];
+      // fade out
+      c.el.style.transition='all .18s ease'; c.el.style.opacity='0'; c.el.style.transform += ' scale(.6)';
+      setTimeout(()=>{ try{ c.el.remove(); }catch(e){} }, 200);
+      coins.splice(idx,1);
+    }
+  }
+
+  // spawn logic with events & powerups
+  function spawnTick(){
+    // decide types
+    let types = COIN_TYPES.map(c=>({...c}));
+    // include special event 'doubleCoin'
+    if(events.some(e=>e.type==='doubleCoins' && e.active)) types.push({ id:'doubleCoin', label:'2X', points:100, cls:'double', effect:'glow-yellow' });
+    // include powerup appearances occasionally
+    if(Math.random() < 0.08) types.push({ id:'powerup', label:'PUP', points:0, cls:'gold', effect:'pulse-purple' });
+    if(Math.random() < 0.035) types.push({ id:'slowMotionPowerup', label:'SLOW', points:0, cls:'eth', effect:'pulse-blue' });
+    if(Math.random() < 0.03) types.push({ id:'autoCollectPowerup', label:'AUTO', points:0, cls:'doge', effect:'pulse-green' });
+
+    const pick = types[Math.floor(Math.random()*types.length)];
+    spawnCoin(pick);
+  }
+
+  // main start/stop
+  function startGame(){
+    if(playing) { resetGame(); return; }
+    playing = true; score = 0; timer=30; spawnRate=500;
+    startBtn.textContent='Restart';
+    document.getElementById('centerHint').style.display='none';
+    updateUI();
+    // spawn initial events array from session-level "events" that were chosen on page load
+    if(events.length===0){
+      // randomly enable events for this session
+      const eventTypes=['doubleCoins','fastSpawn','bonusPoints'];
+      eventTypes.forEach(t=>{ if(Math.random()>0.6) events.push({type:t,duration:rand(5,12),active:true}); });
+    }
+    // create spawn interval (spawnRate will be updated by tick)
+    spawnIntervalId = setInterval(spawnTick, spawnRate);
+    tickIntervalId = setInterval(tick, slowMotion ? 2000 : 1000);
+  }
+
+  function resetGame(){
+    playing=false; clearInterval(spawnIntervalId); clearInterval(tickIntervalId);
+    // cleanup coins
+    coins.slice().forEach(c=> removeCoinById(c.id));
+    // reset UI
+    startBtn.textContent='Start Game';
+    document.getElementById('centerHint').style.display='flex';
+  }
+
+  // tick updates every second
+  function tick(){
+    if(!playing) return;
+    timer--;
+    // difficulty adjustments
+    const elapsed = 30 - timer;
+    spawnRate = Math.max(120, 500 - elapsed*10 - (events.some(e=>e.type==='fastSpawn' && e.active)?120:0));
+    // rebuild spawn interval when spawnRate changed
+    clearInterval(spawnIntervalId);
+    spawnIntervalId = setInterval(spawnTick, spawnRate);
+
+    // reduce event durations & expire
+    events = events.map(ev => {
+      if(ev.active){ ev.duration--; if(ev.duration<=0) ev.active=false; }
+      return ev;
+    });
+
+    // handle auto-collect scanning area every tick
+    if(autoCollect){
+      // collect any coins close to center (50%,50%) within radius 30%
+      coins.slice().forEach(c=>{
+        const left = parseFloat(c.el.style.left);
+        const top = parseFloat(c.el.style.top);
+        if(Math.abs(left - GAME_CENTER.x) < 28 && Math.abs(top - GAME_CENTER.y) < 28){
+          collectCoinByEl(c.el, true);
+        }
+      });
+    }
+
+    updateUI();
+
+    if(timer<=0){
+      // game ends
+      endRound();
+    }
+  }
+
+  // handle clicking a coin element
+  function handleTap(el){
+    if(!playing) return;
+    const type = el.dataset.type;
+    // play sound
+    if(type==='ghost'){ sndGhost.play().catch(()=>{}); }
+    else if(type==='gold' || type==='powerup' || type==='doubleCoin'){ sndBonus.play().catch(()=>{}); }
+    else sndTap.play().catch(()=>{});
+    // powerup handling
+    if(type==='powerup'){ activateMultiplier(); sndPower.play().catch(()=>{}); }
+    if(type==='slowMotionPowerup'){ activateSlowMotion(); sndPower.play().catch(()=>{}); }
+    if(type==='autoCollectPowerup'){ activateAutoCollect(); sndPower.play().catch(()=>{}); }
+    // compute points
+    let pts = parseInt(el.dataset.points) || 0;
+    if(type==='doubleCoin') pts = 100;
+    if(multiplier && pts>0) pts *= 2;
+    score += pts;
+    updateScorePopup( el, (pts>0? '+'+pts : ''+pts) );
+    // particle
+    createParticlesFromEl(el, (type==='gold'?'#f4c430': (type==='ghost'?'#e63946':'#2a9d8f')));
+    // remove el
+    removeCoinById(el.dataset.id);
+  }
+
+  function collectCoinByEl(el, auto=false){
+    // behave similar to handleTap but without triggering powerups
+    const pts = parseInt(el.dataset.points) || 0;
+    let points = pts;
+    if(multiplier && points>0) points *= 2;
+    score += points;
+    createParticlesFromEl(el, '#2a9d8f');
+    updateScorePopup(el, (points>0? '+'+points : ''+points));
+    removeCoinById(el.dataset.id);
+  }
+
+  // powerup activation helpers
+  function activateMultiplier(){
+    multiplier = true; triggerPowerupAnim('multiplier');
+    setTimeout(()=>{ multiplier=false; }, 5000);
+  }
+  function activateSlowMotion(){
+    slowMotion = true; triggerPowerupAnim('slowMotion');
+    // slowTimer handled by tick using slowMotion flag
+    setTimeout(()=>{ slowMotion=false; }, 5000);
+  }
+  function activateAutoCollect(){
+    autoCollect = true; triggerPowerupAnim('autoCollect');
+    setTimeout(()=>{ autoCollect=false; }, 5000);
+  }
+
+  // UI updates
+  function updateUI(){
+    timerEl.textContent = Math.max(0,timer);
+    scoreEl.textContent = score;
+  }
+
+  // end round
+  function endRound(){
+    // stop intervals
+    clearInterval(spawnIntervalId); clearInterval(tickIntervalId);
+    playing=false;
+    startBtn.textContent='Start Game';
+    // show Achievements
+    checkAndSaveAchievements(score);
+    // update leaderboard
+    pushLeaderboard(score);
+    // daily check
+    checkDailyComplete(score);
+    // show summary alert
+    setTimeout(()=>{ alert('Round Over! Your Score: ' + score); }, 200);
+  }
+
+  // leaderboard logic
+  function pushLeaderboard(finalScore){
+    const name = 'Player' + (leaderboard.length+1);
+    leaderboard.push({ name, score: finalScore });
+    leaderboard.sort((a,b)=>b.score-a.score);
+    leaderboard = leaderboard.slice(0,5);
+    localStorage.setItem('cryptoRushLeaderboard', JSON.stringify(leaderboard));
+    renderLeaderboard();
+  }
+
+  // achievements
+  function checkAndSaveAchievements(finalScore){
+    const newly = [];
+    if(finalScore>=500 && !achievements.includes('Score 500')) newly.push('Score 500');
+    if(finalScore>=1000 && !achievements.includes('Score 1000')) newly.push('Score 1000');
+    if(finalScore>=2000 && !achievements.includes('Score 2000')) newly.push('Score 2000');
+    if(newly.length){
+      achievements = achievements.concat(newly);
+      localStorage.setItem('cryptoRushAch', JSON.stringify(achievements));
+      renderAchievements();
+      sndAch.play().catch(()=>{});
+    }
+  }
+
+  // daily challenge check
+  function checkDailyComplete(finalScore){
+    if(daily && daily.active && finalScore >= daily.target){
+      sndDaily.play().catch(()=>{});
+      alert('🎉 Daily Challenge Complete! You scored ' + finalScore + ' points!');
+      daily.active = false;
+      localStorage.setItem('cryptoRushDaily', JSON.stringify(daily));
+      dailyBanner.style.display='none';
+    }
+  }
+
+  // particles & popups
+  function createParticlesFromEl(el, color){
+    const rect = el.getBoundingClientRect();
+    const areaRect = gameArea.getBoundingClientRect();
+    const x = ((rect.left + rect.width/2) - areaRect.left);
+    const y = ((rect.top + rect.height/2) - areaRect.top);
+    for(let i=0;i<8;i++){
+      const p = document.createElement('div');
+      p.className='particle';
+      p.style.left = x + 'px';
+      p.style.top = y + 'px';
+      p.style.backgroundColor = color;
+      p.style.opacity = '1';
+      gameArea.appendChild(p);
+      // animate
+      const dx = (Math.random()-0.5)*140;
+      const dy = (Math.random()-0.8)*140;
+      p.animate([
+        { transform:`translate(-50%,-50%) translate(0px,0px) scale(.6)`, opacity:1 },
+        { transform:`translate(-50%,-50%) translate(${dx}px,${dy}px) scale(.2)`, opacity:0 }
+      ], { duration: 600, easing:'cubic-bezier(.2,.8,.2,1)' });
+      setTimeout(()=>{ try{ p.remove(); }catch(e){} }, 650);
+    }
+  }
+  function updateScorePopup(el, text){
+    const p = document.createElement('div');
+    p.className = 'popup';
+    p.textContent = text;
+    p.style.position='absolute';
+    const areaRect = gameArea.getBoundingClientRect();
+    const rect = el.getBoundingClientRect();
+    p.style.left = (rect.left - areaRect.left + rect.width/2) + 'px';
+    p.style.top = (rect.top - areaRect.top) + 'px';
+    p.style.transform = 'translate(-50%,0)';
+    p.style.color = '#2a9d8f';
+    gameArea.appendChild(p);
+    p.animate([{ opacity:1, transform:'translate(-50%,0)' }, { opacity:0, transform:'translate(-50%,-30px)'}], { duration:800 });
+    setTimeout(()=> p.remove(),850);
+  }
+
+  // remove coin helpers
+  function removeCoinById(id){
+    const idx = coins.findIndex(x=>x.id===id);
+    if(idx===-1) return;
+    const c = coins[idx];
+    try{ c.el.remove(); }catch(e){}
+    coins.splice(idx,1);
+  }
+
+  // powerup visual animation trigger
+  function triggerPowerupAnim(kind){
+    // small visual top-right badge for a second
+    const badge = document.createElement('div');
+    badge.className = 'powerup-badge';
+    badge.textContent = kind === 'multiplier' ? 'x2 Active!' : kind==='slowMotion' ? 'Slow Motion' : 'Auto-Collect';
+    document.body.appendChild(badge);
+    setTimeout(()=> badge.remove(), 950);
+  }
+
+  // helper to collect coin element by id
+  function collectCoinById(id){
+    const c = coins.find(x=>x.id===id);
+    if(c) collectCoinByEl(c.el);
+  }
+
+  // simple API to update leaderboard UI
+  document.getElementById('clearScores').addEventListener('click', ()=>{
+    if(confirm('Clear saved leaderboard?')){ leaderboard=[]; localStorage.removeItem('cryptoRushLeaderboard'); renderLeaderboard(); }
+  });
+
+  // Start button
+  startBtn.addEventListener('click', ()=> startGame());
+
+  // initial render
+  renderLeaderboard(); renderAchievements();
+
+  // Accessibility: touch area to remove focus
+  gameArea.addEventListener('click', ()=>{ /* tap background */ });
+
+  // expose a couple helpers for debugging (not necessary)
+  window.cryptoRush = { startGame, endRound, getScore: ()=>score };
+
+})();
+</script>
 </body>
 </html>
